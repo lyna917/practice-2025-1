@@ -1,9 +1,14 @@
 import hashlib
 import time
 import json
+import os
+import pickle
+
+BLOCKS_DIR = "blocks"
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
+
 
 class Transaction:
     def __init__(self, sender, recipient, amount):
@@ -14,12 +19,15 @@ class Transaction:
     def __repr__(self):
         return json.dumps(self.__dict__, sort_keys=True)
 
+
 class MerkleTree:
     @staticmethod
     def get_merkle_root(transactions):
         if not transactions:
             return None
+
         hashes = [hash_sha256(str(tx)) for tx in transactions]
+
         while len(hashes) > 1:
             if len(hashes) % 2 == 1:
                 hashes.append(hashes[-1])
@@ -28,7 +36,9 @@ class MerkleTree:
                 new_hash = hash_sha256(hashes[i] + hashes[i + 1])
                 new_level.append(new_hash)
             hashes = new_level
+
         return hashes[0]
+
 
 class Block:
     def __init__(self, index, transactions, previous_hash, difficulty, data=None):
@@ -66,10 +76,15 @@ class Block:
             "hash": self.hash,
         }
 
+
 class Blockchain:
-    def __init__(self, difficulty=3):
-        self.chain = [self.create_genesis_block()]
+    def __init__(self, difficulty=4):
         self.difficulty = difficulty
+        self.chain = self.load_blocks_from_files()
+        if not self.chain:
+            genesis = self.create_genesis_block()
+            self.chain = [genesis]
+            self.save_block_to_file(genesis)
 
     def create_genesis_block(self):
         return Block(0, [], "0" * 64, difficulty=1, data="Genesis Block")
@@ -88,28 +103,36 @@ class Blockchain:
             data=data
         )
         self.chain.append(new_block)
+        self.save_block_to_file(new_block)
+
+    def save_block_to_file(self, block):
+        os.makedirs(BLOCKS_DIR, exist_ok=True)
+        filename = os.path.join(BLOCKS_DIR, f"{block.index:08d}.blk")
+        with open(filename, "wb") as f:
+            pickle.dump(block, f)
+
+    def load_blocks_from_files(self):
+        if not os.path.exists(BLOCKS_DIR):
+            return []
+
+        files = sorted(os.listdir(BLOCKS_DIR))
+        chain = []
+
+        for filename in files:
+            path = os.path.join(BLOCKS_DIR, filename)
+            with open(path, "rb") as f:
+                block = pickle.load(f)
+
+                # Проверка связности
+                if chain and block.previous_hash != chain[-1].hash:
+                    raise ValueError(f"Нарушена целостность цепочки в блоке {filename}")
+                chain.append(block)
+
+        return chain
 
     def to_dict(self):
         return [block.to_dict() for block in self.chain]
 
-    def generate_initial_blocks(self, count=5):
+    def generate_initial_blocks(self, count=1000):
         for i in range(count):
             self.add_block([], data={"type": "init", "index": i})
-
-    def get_transactions_by_address(self, address: str):
-        transactions = []
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.sender == address or tx.recipient == address:
-                    transactions.append(tx.__dict__)
-        return transactions
-
-    def get_balance(self, address: str):
-        balance = 0.0
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.recipient == address:
-                    balance += tx.amount
-                elif tx.sender == address:
-                    balance -= tx.amount
-        return balance
