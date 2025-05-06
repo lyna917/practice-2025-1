@@ -4,7 +4,6 @@ import json
 import os
 import pickle
 
-BLOCKS_DIR = "blocks"
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
@@ -25,18 +24,11 @@ class MerkleTree:
     def get_merkle_root(transactions):
         if not transactions:
             return None
-
         hashes = [hash_sha256(str(tx)) for tx in transactions]
-
         while len(hashes) > 1:
             if len(hashes) % 2 == 1:
                 hashes.append(hashes[-1])
-            new_level = []
-            for i in range(0, len(hashes), 2):
-                new_hash = hash_sha256(hashes[i] + hashes[i + 1])
-                new_level.append(new_hash)
-            hashes = new_level
-
+            hashes = [hash_sha256(hashes[i] + hashes[i + 1]) for i in range(0, len(hashes), 2)]
         return hashes[0]
 
 
@@ -78,13 +70,11 @@ class Block:
 
 
 class Blockchain:
-    def __init__(self, difficulty=4):
+    def __init__(self, difficulty=4, storage_dir='blocks'):
         self.difficulty = difficulty
-        self.chain = self.load_blocks_from_files()
-        if not self.chain:
-            genesis = self.create_genesis_block()
-            self.chain = [genesis]
-            self.save_block_to_file(genesis)
+        self.storage_dir = storage_dir
+        os.makedirs(self.storage_dir, exist_ok=True)
+        self.chain = self.load_chain()
 
     def create_genesis_block(self):
         return Block(0, [], "0" * 64, difficulty=1, data="Genesis Block")
@@ -103,36 +93,25 @@ class Blockchain:
             data=data
         )
         self.chain.append(new_block)
-        self.save_block_to_file(new_block)
-
-    def save_block_to_file(self, block):
-        os.makedirs(BLOCKS_DIR, exist_ok=True)
-        filename = os.path.join(BLOCKS_DIR, f"{block.index:08d}.blk")
-        with open(filename, "wb") as f:
-            pickle.dump(block, f)
-
-    def load_blocks_from_files(self):
-        if not os.path.exists(BLOCKS_DIR):
-            return []
-
-        files = sorted(os.listdir(BLOCKS_DIR))
-        chain = []
-
-        for filename in files:
-            path = os.path.join(BLOCKS_DIR, filename)
-            with open(path, "rb") as f:
-                block = pickle.load(f)
-
-                # Проверка связности
-                if chain and block.previous_hash != chain[-1].hash:
-                    raise ValueError(f"Нарушена целостность цепочки в блоке {filename}")
-                chain.append(block)
-
-        return chain
+        self.save_block(new_block)
 
     def to_dict(self):
         return [block.to_dict() for block in self.chain]
 
-    def generate_initial_blocks(self, count=1000):
-        for i in range(count):
-            self.add_block([], data={"type": "init", "index": i})
+    def save_block(self, block):
+        filename = os.path.join(self.storage_dir, f"{block.index}.blk")
+        with open(filename, "wb") as f:
+            pickle.dump(block, f)
+
+    def load_chain(self):
+        chain = []
+        files = sorted(f for f in os.listdir(self.storage_dir) if f.endswith(".blk"))
+        for filename in files:
+            with open(os.path.join(self.storage_dir, filename), "rb") as f:
+                block = pickle.load(f)
+                chain.append(block)
+        if not chain:
+            genesis = self.create_genesis_block()
+            self.save_block(genesis)
+            return [genesis]
+        return chain

@@ -1,20 +1,22 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from blockchain import Blockchain
-from models import BlockAddRequest, UserRegisterRequest, AuthRequest
-from storage import register_user, get_user, authenticate_user
+from models import BlockAddRequest, UserRegisterRequest, AuthRequest, BalanceRequest
+from storage import register_user, get_user, authenticate, hash_password, users
 
 router = APIRouter()
 blockchain = Blockchain()
-blockchain.generate_initial_blocks(5)
+
 
 @router.get("/chain")
 def get_chain():
     return {"chain": blockchain.to_dict()}
 
+
 @router.post("/mine")
 def mine_block(req: BlockAddRequest):
     blockchain.add_block([tx.dict() for tx in req.transactions])
     return {"message": "Block mined successfully", "chain_length": len(blockchain.chain)}
+
 
 @router.post("/register")
 def register(req: UserRegisterRequest):
@@ -31,25 +33,31 @@ def register(req: UserRegisterRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/block/{index}")
-def get_block(index: int):
-    if index < 0 or index >= len(blockchain.chain):
-        raise HTTPException(status_code=404, detail="Block not found")
-    return blockchain.chain[index].to_dict()
 
-@router.post("/store-data/")
-def store_data(data: str):
-    blockchain.add_block([], data=data)
-    return {"message": "Data stored in new block", "block_index": len(blockchain.chain) - 1}
+@router.post("/auth")
+def auth(req: AuthRequest):
+    address = authenticate(req.username, req.password)
+    return {"address": address}
 
-@router.get("/transactions/by-address")
-def get_transactions(address: str = Query(..., description="Крипто-адрес")):
-    txs = blockchain.get_transactions_by_address(address)
-    return {"address": address, "transactions": txs, "count": len(txs)}
 
 @router.post("/balance")
-def get_balance(auth: AuthRequest):
-    if not authenticate_user(auth.address, auth.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    balance = blockchain.get_balance(auth.address)
-    return {"address": auth.address, "balance": balance}
+def get_balance(req: BalanceRequest):
+    user = get_user_by_address(req.address)
+    if not user or user.password_hash != hash_password(req.password):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    balance = 0.0
+    for block in blockchain.chain:
+        for tx in block.transactions:
+            if tx.sender == req.address:
+                balance -= tx.amount
+            elif tx.recipient == req.address:
+                balance += tx.amount
+    return {"balance": balance}
+
+
+def get_user_by_address(address: str):
+    for user in users.values():
+        if user.address == address:
+            return user
+    return None
