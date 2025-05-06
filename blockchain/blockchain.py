@@ -1,6 +1,6 @@
 import hashlib
-import json
 import time
+import json
 
 
 def hash_sha256(data):
@@ -56,8 +56,16 @@ class Block:
                 return hash_val
             self.nonce += 1
 
-    def __repr__(self):
-        return json.dumps(self.__dict__, indent=2, sort_keys=True, default=str)
+    def to_dict(self):
+        return {
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "transactions": [str(tx) for tx in self.transactions],
+            "previous_hash": self.previous_hash,
+            "merkle_root": self.merkle_root,
+            "nonce": self.nonce,
+            "hash": self.hash,
+        }
 
 
 class Blockchain:
@@ -73,37 +81,9 @@ class Blockchain:
 
     def add_block(self, transactions):
         prev_block = self.get_latest_block()
-        new_block = Block(len(self.chain), transactions, prev_block.hash, self.difficulty)
+        tx_objs = [Transaction(**tx) for tx in transactions]
+        new_block = Block(len(self.chain), tx_objs, prev_block.hash, self.difficulty)
         self.chain.append(new_block)
 
-    def is_valid(self):
-        prefix = '0' * self.difficulty
-        for i in range(1, len(self.chain)):
-            cur = self.chain[i]
-            prev = self.chain[i - 1]
-            if cur.hash != cur.calculate_hash():
-                return False
-            if not cur.hash.startswith(prefix):
-                return False
-            if cur.previous_hash != prev.hash:
-                return False
-        return True
-
-
-# Пример использования
-if __name__ == "__main__":
-    blockchain = Blockchain(difficulty=4)
-    tx1 = Transaction("Alice", "Bob", 10)
-    tx2 = Transaction("Bob", "Charlie", 5)
-
-    print("⛏ Майнинг блока 1...")
-    blockchain.add_block([tx1, tx2])
-
-    tx3 = Transaction("Charlie", "Alice", 2)
-    print("⛏ Майнинг блока 2...")
-    blockchain.add_block([tx3])
-
-    for block in blockchain.chain:
-        print(block)
-
-    print("Цепочка валидна:", blockchain.is_valid())
+    def to_dict(self):
+        return [block.to_dict() for block in self.chain]
