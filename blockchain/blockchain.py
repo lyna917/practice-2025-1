@@ -3,21 +3,10 @@ import time
 import json
 import os
 import pickle
-
+from models import Transaction
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
-
-
-class Transaction:
-    def __init__(self, sender, recipient, amount):
-        self.sender = sender
-        self.recipient = recipient
-        self.amount = amount
-
-    def __repr__(self):
-        return json.dumps(self.__dict__, sort_keys=True)
-
 
 class MerkleTree:
     @staticmethod
@@ -28,9 +17,12 @@ class MerkleTree:
         while len(hashes) > 1:
             if len(hashes) % 2 == 1:
                 hashes.append(hashes[-1])
-            hashes = [hash_sha256(hashes[i] + hashes[i + 1]) for i in range(0, len(hashes), 2)]
+            new_level = []
+            for i in range(0, len(hashes), 2):
+                new_hash = hash_sha256(hashes[i] + hashes[i + 1])
+                new_level.append(new_hash)
+            hashes = new_level
         return hashes[0]
-
 
 class Block:
     def __init__(self, index, transactions, previous_hash, difficulty, data=None):
@@ -68,13 +60,12 @@ class Block:
             "hash": self.hash,
         }
 
-
 class Blockchain:
-    def __init__(self, difficulty=4, storage_dir='blocks'):
+    def __init__(self, difficulty=3):
+        self.chain = []
         self.difficulty = difficulty
-        self.storage_dir = storage_dir
-        os.makedirs(self.storage_dir, exist_ok=True)
-        self.chain = self.load_chain()
+        self.blocks_dir = "blocks"
+        os.makedirs(self.blocks_dir, exist_ok=True)
 
     def create_genesis_block(self):
         return Block(0, [], "0" * 64, difficulty=1, data="Genesis Block")
@@ -83,35 +74,46 @@ class Blockchain:
         return self.chain[-1]
 
     def add_block(self, transactions, data=None):
-        prev_block = self.get_latest_block()
+        index = len(self.chain)
+        previous_hash = self.chain[-1].hash if self.chain else "0" * 64
         tx_objs = [Transaction(**tx) for tx in transactions]
-        new_block = Block(
-            index=len(self.chain),
-            transactions=tx_objs,
-            previous_hash=prev_block.hash,
-            difficulty=self.difficulty,
-            data=data
-        )
+        new_block = Block(index, tx_objs, previous_hash, self.difficulty, data)
         self.chain.append(new_block)
-        self.save_block(new_block)
+
+    def save_block_to_disk(self, block):
+        path = os.path.join(self.blocks_dir, f"{block.index}.blk")
+        with open(path, "wb") as f:
+            pickle.dump(block, f)
+
+    def load_blocks_from_disk(self):
+        files = sorted(os.listdir(self.blocks_dir), key=lambda x: int(x.split('.')[0]))
+        for filename in files:
+            path = os.path.join(self.blocks_dir, filename)
+            with open(path, "rb") as f:
+                block = pickle.load(f)
+                self.chain.append(block)
+        if not self.chain:
+            genesis = self.create_genesis_block()
+            self.chain.append(genesis)
+            self.save_block_to_disk(genesis)
 
     def to_dict(self):
         return [block.to_dict() for block in self.chain]
 
-    def save_block(self, block):
-        filename = os.path.join(self.storage_dir, f"{block.index}.blk")
-        with open(filename, "wb") as f:
-            pickle.dump(block, f)
+    def get_balance(self, address):
+        balance = 0
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.sender == address:
+                    balance -= tx.amount
+                if tx.recipient == address:
+                    balance += tx.amount
+        return balance
 
-    def load_chain(self):
-        chain = []
-        files = sorted(f for f in os.listdir(self.storage_dir) if f.endswith(".blk"))
-        for filename in files:
-            with open(os.path.join(self.storage_dir, filename), "rb") as f:
-                block = pickle.load(f)
-                chain.append(block)
-        if not chain:
-            genesis = self.create_genesis_block()
-            self.save_block(genesis)
-            return [genesis]
-        return chain
+    def get_transactions_by_address(self, address):
+        txs = []
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.sender == address or tx.recipient == address:
+                    txs.append(tx.__dict__)
+        return txs
