@@ -96,24 +96,32 @@ class Blockchain:
             genesis = self.create_genesis_block()
             self.chain.append(genesis)
             self.save_block_to_disk(genesis)
+        # Проверка целостности после загрузки
+        is_valid, message = self.validate_chain()
+        if not is_valid:
+            raise ValueError(f"Blockchain integrity check failed: {message}")
+        else:
+            print("[INFO] Blockchain validated successfully.")
+
+    def validate_chain(self):
+        for i in range(1, len(self.chain)):
+            current = self.chain[i]
+            previous = self.chain[i - 1]
+
+            # Проверка хэша блока
+            if current.hash != current.calculate_hash():
+                return False, f"Hash mismatch at block {current.index}"
+
+            # Проверка хэша предыдущего блока
+            if current.previous_hash != previous.hash:
+                return False, f"Previous hash mismatch at block {current.index}"
+
+            # Проверка Merkle Root
+            expected_merkle_root = MerkleTree.get_merkle_root(current.transactions)
+            if current.merkle_root != expected_merkle_root:
+                return False, f"Invalid Merkle Root at block {current.index}"
+
+        return True, "Blockchain is valid"
 
     def to_dict(self):
         return [block.to_dict() for block in self.chain]
-
-    def get_balance(self, address):
-        balance = 0
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.sender == address:
-                    balance -= tx.amount
-                if tx.recipient == address:
-                    balance += tx.amount
-        return balance
-
-    def get_transactions_by_address(self, address):
-        txs = []
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.sender == address or tx.recipient == address:
-                    txs.append(tx.__dict__)
-        return txs
