@@ -70,7 +70,7 @@ def login(req: UserLoginRequest):
     user = authenticate(req.username, req.password)
     if user:
         return {"address": user.address}
-    return {"address": ""}
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
 
 @router.post(
     "/transaction",

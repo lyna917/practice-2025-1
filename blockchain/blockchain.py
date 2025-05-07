@@ -72,7 +72,32 @@ class Blockchain:
 
     def get_latest_block(self):
         return self.chain[-1]
+    
+    def add_transaction(self, sender, recipient, amount):
+        if not self.chain:
+            return False
+        tx = Transaction(sender, recipient, amount)
+        self.chain[-1].transactions.append(tx)
+        return True
 
+    def get_transactions_by_address(self, address):
+        txs = []
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.sender == address or tx.recipient == address:
+                    txs.append(str(tx))
+        return txs
+
+    def get_balance(self, address):
+        balance = 0
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.sender == address:
+                    balance -= tx.amount
+                if tx.recipient == address:
+                    balance += tx.amount
+        return balance
+    
     def add_block(self, transactions, data=None):
         index = len(self.chain)
         previous_hash = self.chain[-1].hash if self.chain else "0" * 64
