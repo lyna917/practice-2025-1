@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from blockchain import Blockchain
 from models import BlockAddRequest, UserRegisterRequest, UserLoginRequest, TransactionCreateRequest
 from storage import register_user, get_user, authenticate
+from models import CreditBalanceRequest
 
 router = APIRouter()
 blockchain = Blockchain()
@@ -20,17 +21,12 @@ blockchain.load_blocks_from_disk()
 def get_chain():
     return {"chain": blockchain.to_dict()}
 
-@router.post(
-    "/mine",
-    status_code=status.HTTP_201_CREATED,
-    summary="Mine new block",
-    description="Создает новый блок с переданными транзакциями.",
-    responses={
-        201: {"description": "Блок успешно создан"},
-        400: {"description": "Неверные входные данные"},
-        500: {"description": "Ошибка при майнинге блока"},
-    }
-)
+@router.post("/mine", status_code=201)
+def mine_block():
+    if not blockchain.mine_pending_transactions():
+        raise HTTPException(status_code=400, detail="No transactions to mine")
+    return {"message": "Block mined successfully", "chain_length": len(blockchain.chain)}
+
 def mine_block(req: BlockAddRequest):
     try:
         blockchain.add_block([tx.dict() for tx in req.transactions])
@@ -129,3 +125,23 @@ def get_balance(req: UserLoginRequest):
     
     balance = blockchain.get_balance(user.address)
     return {"balance": balance}
+
+@router.post(
+    "/credit",
+    status_code=status.HTTP_201_CREATED,
+    summary="Credit user balance",
+    description="Пополняет баланс пользователя (моделируется как транзакция от SYSTEM).",
+    responses={
+        201: {"description": "Баланс успешно пополнен"},
+        400: {"description": "Неверные данные"},
+    }
+)
+def credit_user_balance(req: CreditBalanceRequest):
+    if req.amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be positive")
+    
+    success = blockchain.credit_balance(req.recipient_address, req.amount)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to credit balance")
+    
+    return {"message": "Balance credited successfully"}

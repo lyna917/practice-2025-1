@@ -65,6 +65,7 @@ class Blockchain:
         self.chain = []
         self.difficulty = difficulty
         self.blocks_dir = "blocks"
+        self.pending_transactions = []
         os.makedirs(self.blocks_dir, exist_ok=True)
 
     def create_genesis_block(self):
@@ -72,13 +73,35 @@ class Blockchain:
 
     def get_latest_block(self):
         return self.chain[-1]
-    
+
     def add_transaction(self, sender, recipient, amount):
-        if not self.chain:
-            return False
         tx = Transaction(sender, recipient, amount)
-        self.chain[-1].transactions.append(tx)
+        self.pending_transactions.append(tx)
         return True
+
+    def mine_pending_transactions(self):
+        if not self.pending_transactions:
+            return False
+        index = len(self.chain)
+        previous_hash = self.chain[-1].hash if self.chain else "0" * 64
+        new_block = Block(index, self.pending_transactions, previous_hash, self.difficulty)
+        self.chain.append(new_block)
+        self.save_block_to_disk(new_block)
+        self.pending_transactions = []
+        return True
+
+    def credit_balance(self, address, amount):
+        return self.add_transaction("SYSTEM", address, amount)
+
+    def get_balance(self, address):
+        balance = 0.0
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.sender == address:
+                    balance -= tx.amount
+                if tx.recipient == address:
+                    balance += tx.amount
+        return balance
 
     def get_transactions_by_address(self, address):
         txs = []
@@ -87,23 +110,6 @@ class Blockchain:
                 if tx.sender == address or tx.recipient == address:
                     txs.append(str(tx))
         return txs
-
-    def get_balance(self, address):
-        balance = 0
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.sender == address:
-                    balance -= tx.amount
-                if tx.recipient == address:
-                    balance += tx.amount
-        return balance
-    
-    def add_block(self, transactions, data=None):
-        index = len(self.chain)
-        previous_hash = self.chain[-1].hash if self.chain else "0" * 64
-        tx_objs = [Transaction(**tx) for tx in transactions]
-        new_block = Block(index, tx_objs, previous_hash, self.difficulty, data)
-        self.chain.append(new_block)
 
     def save_block_to_disk(self, block):
         path = os.path.join(self.blocks_dir, f"{block.index}.blk")
@@ -121,7 +127,6 @@ class Blockchain:
             genesis = self.create_genesis_block()
             self.chain.append(genesis)
             self.save_block_to_disk(genesis)
-        # Проверка целостности после загрузки
         is_valid, message = self.validate_chain()
         if not is_valid:
             raise ValueError(f"Blockchain integrity check failed: {message}")
@@ -132,20 +137,13 @@ class Blockchain:
         for i in range(1, len(self.chain)):
             current = self.chain[i]
             previous = self.chain[i - 1]
-
-            # Проверка хэша блока
             if current.hash != current.calculate_hash():
                 return False, f"Hash mismatch at block {current.index}"
-
-            # Проверка хэша предыдущего блока
             if current.previous_hash != previous.hash:
                 return False, f"Previous hash mismatch at block {current.index}"
-
-            # Проверка Merkle Root
             expected_merkle_root = MerkleTree.get_merkle_root(current.transactions)
             if current.merkle_root != expected_merkle_root:
                 return False, f"Invalid Merkle Root at block {current.index}"
-
         return True, "Blockchain is valid"
 
     def to_dict(self):

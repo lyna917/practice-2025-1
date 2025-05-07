@@ -28,6 +28,10 @@ class User(BaseModel):
     username: str
     address: str
     password_hash: str
+    
+class CreditBalanceRequest(BaseModel):
+    recipient_address: str
+    amount: float
 
 class Transaction:
     def __init__(self, sender, recipient, amount):
@@ -36,4 +40,4 @@ class Transaction:
         self.amount = amount
 
     def __repr__(self):
-        return f"{self.sender} -> {self.recipient}: {self.amount}"
+        return {"sender": self.sender, "recipient": self.recipient, "amount": self.amount}
