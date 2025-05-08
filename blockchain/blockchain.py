@@ -33,6 +33,7 @@ class Block:
         self.merkle_root = MerkleTree.get_merkle_root(transactions)
         self.nonce = 0
         self.data = data
+        self.pending_transactions = []
         self.hash = self.mine_block(difficulty)
 
     def calculate_hash(self):
@@ -77,18 +78,30 @@ class Blockchain:
     def add_transaction(self, sender, recipient, amount):
         tx = Transaction(sender, recipient, amount)
         self.pending_transactions.append(tx)
+
+        #Если накопилось 2 транзакций — майним блок
+        if len(self.pending_transactions) >= 2:
+            self.mine_pending_transactions()
+            self.save_block_to_disk(self.get_latest_block())
+            print("[INFO] Автоматический майнинг блока выполнен.")
+
         return True
 
     def mine_pending_transactions(self):
         if not self.pending_transactions:
-            return False
-        index = len(self.chain)
+            return None
+
         previous_hash = self.chain[-1].hash if self.chain else "0" * 64
-        new_block = Block(index, self.pending_transactions, previous_hash, self.difficulty)
-        self.chain.append(new_block)
-        self.save_block_to_disk(new_block)
-        self.pending_transactions = []
-        return True
+        block = Block(
+            index=len(self.chain),
+            transactions=self.pending_transactions.copy(),
+            previous_hash=previous_hash,
+            difficulty=self.difficulty,
+            data=None
+        )
+        self.chain.append(block)
+        self.pending_transactions.clear()
+        return block
 
     def credit_balance(self, address, amount):
         return self.add_transaction("SYSTEM", address, amount)
