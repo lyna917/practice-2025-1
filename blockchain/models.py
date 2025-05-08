@@ -40,4 +40,4 @@ class Transaction:
         self.amount = amount
 
     def __repr__(self):
-        return {"sender": self.sender, "recipient": self.recipient, "amount": self.amount}
+        return f"{self.sender} -> {self.recipient}: {self.amount}"

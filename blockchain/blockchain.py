@@ -80,7 +80,7 @@ class Blockchain:
         self.pending_transactions.append(tx)
 
         #Если накопилось 2 транзакций — майним блок
-        if len(self.pending_transactions) >= 2:
+        if len(self.pending_transactions) >= 1:
             self.mine_pending_transactions()
             self.save_block_to_disk(self.get_latest_block())
             print("[INFO] Автоматический майнинг блока выполнен.")
